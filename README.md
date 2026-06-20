@@ -28,9 +28,18 @@ Prerequisites:
 Steps:
 
 ```
-cd D:\Study\assessment
+git clone https://github.com/zranitm/outlook-room-booker.git
+cd outlook-room-booker
 go run .
 ```
+
+Before the first run, edit `main.go` and set:
+
+- `ownerTag` — your short identifier (appears in every booked subject)
+- `rooms` — the resource mailboxes you want to claim
+- `localTZName` — your timezone if not `Asia/Bangkok`
+- `responseFolderName` — the Inbox subfolder your rules route room responses
+  to (or empty string to disable the second-pass cleanup)
 
 That's it. The program:
 
