@@ -1486,11 +1486,11 @@ func teeStdoutToFile() func() {
 func main() {
 	defer teeStdoutToFile()()
 
-	logSkew := func(label string, warnOnLarge bool) {
+	logSkew := func(label string) *clockSkewSample {
 		sample, err := measureClockSkew()
 		if err != nil {
 			fmt.Printf("[debug] clock skew (%s) check failed: %v\n", label, err)
-			return
+			return nil
 		}
 		direction := "ahead of"
 		mag := sample.Offset
@@ -1498,18 +1498,32 @@ func main() {
 			direction = "behind"
 			mag = -sample.Offset
 		}
-		warn := ""
-		if warnOnLarge && mag > 2*time.Second {
-			warn = " — sync your laptop clock (Settings → Time & Language → Sync now)"
-		}
-		fmt.Printf("[debug] clock skew (%s): laptop is %s %s network (rtt %s)%s\n",
+		fmt.Printf("[debug] clock skew (%s): laptop is %s %s network (rtt %s)\n",
 			label, mag.Truncate(time.Millisecond), direction,
-			sample.RTT.Truncate(time.Millisecond), warn)
+			sample.RTT.Truncate(time.Millisecond))
+		return &sample
 	}
 
-	logSkew("before sync", false)
+	logSkew("before sync")
 	syncSystemClock()
-	logSkew("after sync", true)
+	if after := logSkew("after sync"); after != nil {
+		mag := after.Offset
+		if mag < 0 {
+			mag = -mag
+		}
+		// 50ms is roughly the per-Send variance — drift above this
+		// starts shifting the trigger fire away from when Exchange
+		// thinks the slot opens, so it's worth surfacing.
+		if mag > 50*time.Millisecond {
+			// Negate the offset: positive Offset = laptop ahead → step
+			// backward; negative = laptop behind → step forward.
+			adjustMs := -after.Offset.Milliseconds()
+			fmt.Printf("[debug] residual drift still %s — auto-sync did not fully correct\n",
+				mag.Truncate(time.Millisecond))
+			fmt.Println("[debug] paste in an elevated PowerShell to step the clock:")
+			fmt.Printf("[debug]   Set-Date -Adjust ([TimeSpan]::FromMilliseconds(%d))\n", adjustMs)
+		}
+	}
 
 	killExistingOutlook()
 
