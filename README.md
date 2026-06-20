@@ -34,8 +34,11 @@ go run .
 
 That's it. The program:
 
-1. Measures NTP skew against `time.cloudflare.com` (diagnostic only, no
-   correction). Sync your laptop manually if it warns about > 2 s drift.
+1. Triggers a pre-registered Windows Scheduled Task (`RoomBooker-TimeSync`)
+   that runs as SYSTEM and syncs the clock via `w32tm /resync`. Then
+   measures residual NTP skew against `time.cloudflare.com`. If the task
+   isn't registered yet, the program prints the one-time setup command
+   and continues (manual sync warning if drift > 2 s).
 2. Kills any orphan `OUTLOOK.EXE` and starts COM workers attached to a
    fresh instance.
 3. Sweeps the calendar (today through today + 14 days) for previous nights'
@@ -189,13 +192,32 @@ At startup the program runs 5 NTP queries against
 `time.cloudflare.com` (anycast, low and symmetric RTT from VN), reports
 the median offset and the spread. A spread tight to a few ms means the
 displayed offset is real drift; a wide spread means path noise and the
-clock is probably fine. Sync manually before the trigger if needed:
+clock is probably fine.
 
-```
-net start w32time & w32tm /resync & net stop w32time
+The program **auto-syncs the clock** via a pre-registered Windows
+Scheduled Task that runs as SYSTEM (no UAC prompt at runtime). One-time
+setup — paste this into an **elevated PowerShell**:
+
+```powershell
+$a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c net start w32time & w32tm /resync & net stop w32time'
+$t = New-ScheduledTaskTrigger -AtStartup
+$p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
+Register-ScheduledTask -TaskName 'RoomBooker-TimeSync' -Action $a -Trigger $t -Principal $p -Force
 ```
 
-The program does NOT adjust the clock automatically.
+After that, every program start fires `schtasks /run /tn
+RoomBooker-TimeSync` from a non-elevated process, the task syncs the
+clock as SYSTEM, then the skew check runs to verify. If the task isn't
+registered, the program prints the setup command and continues — the
+skew reading will still surface real drift so you know to sync
+manually.
+
+Step-vs-slew note: Windows W32Time slews phase offsets under 1 s rather
+than stepping. If a small (~hundreds of ms) skew persists after sync,
+either run `Set-Date -Adjust ([TimeSpan]::FromMilliseconds(-N))` once
+in an elevated PowerShell (immediate step) or set
+`HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Config\MaxAllowedPhaseOffset`
+to `0` to make future resyncs step instead of slew.
 
 ### Date-stamped logs
 
