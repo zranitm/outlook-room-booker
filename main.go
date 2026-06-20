@@ -1486,10 +1486,12 @@ func teeStdoutToFile() func() {
 func main() {
 	defer teeStdoutToFile()()
 
-	syncSystemClock()
-	if sample, err := measureClockSkew(); err != nil {
-		fmt.Printf("[debug] clock skew check failed: %v\n", err)
-	} else {
+	logSkew := func(label string, warnOnLarge bool) {
+		sample, err := measureClockSkew()
+		if err != nil {
+			fmt.Printf("[debug] clock skew (%s) check failed: %v\n", label, err)
+			return
+		}
 		direction := "ahead of"
 		mag := sample.Offset
 		if sample.Offset < 0 {
@@ -1497,13 +1499,17 @@ func main() {
 			mag = -sample.Offset
 		}
 		warn := ""
-		if mag > 2*time.Second {
+		if warnOnLarge && mag > 2*time.Second {
 			warn = " — sync your laptop clock (Settings → Time & Language → Sync now)"
 		}
-		fmt.Printf("[debug] clock skew: laptop is %s %s network (rtt %s)%s\n",
-			mag.Truncate(time.Millisecond), direction,
+		fmt.Printf("[debug] clock skew (%s): laptop is %s %s network (rtt %s)%s\n",
+			label, mag.Truncate(time.Millisecond), direction,
 			sample.RTT.Truncate(time.Millisecond), warn)
 	}
+
+	logSkew("before sync", false)
+	syncSystemClock()
+	logSkew("after sync", true)
 
 	killExistingOutlook()
 
