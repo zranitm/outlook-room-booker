@@ -198,38 +198,8 @@ func (m bookMetrics) String() string {
 }
 
 // ---------------------------------------------------------------------------
-// Clock sync + skew check
+// Clock skew check
 // ---------------------------------------------------------------------------
-
-// clockSyncTaskName is a pre-registered Windows Scheduled Task that
-// runs as SYSTEM (highest privileges) so it can start the W32Time
-// service and call w32tm /resync without prompting for elevation.
-// Created once, then triggered every run from this non-elevated
-// process via `schtasks /run`. See README → Clock sync diagnostic.
-const clockSyncTaskName = "RoomBooker-TimeSync"
-
-// syncSystemClock triggers the pre-registered scheduled task to sync
-// the OS clock against the W32Time peer list. Falls back to a helpful
-// log message if the task isn't registered — measureClockSkew still
-// runs immediately after, so the user sees the remaining drift either
-// way.
-func syncSystemClock() {
-	out, err := exec.Command("schtasks", "/run", "/tn", clockSyncTaskName).CombinedOutput()
-	msg := strings.TrimSpace(string(out))
-	if err != nil {
-		fmt.Printf("[init] schtasks /run %s failed: %v (%s)\n", clockSyncTaskName, err, msg)
-		fmt.Println("[init] one-time setup — paste into an elevated PowerShell:")
-		fmt.Println(`[init]   $a = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c net start w32time & w32tm /resync & net stop w32time'`)
-		fmt.Println(`[init]   $t = New-ScheduledTaskTrigger -AtStartup`)
-		fmt.Println(`[init]   $p = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest`)
-		fmt.Printf("[init]   Register-ScheduledTask -TaskName '%s' -Action $a -Trigger $t -Principal $p -Force\n", clockSyncTaskName)
-		return
-	}
-	fmt.Printf("[init] time sync triggered: %s\n", msg)
-	// Task runs async (net start + w32tm /resync + net stop chain).
-	// Sleep long enough for the resync to land before the skew check.
-	time.Sleep(4 * time.Second)
-}
 
 // clockSkewSample holds one NTP query result. We collect several to
 // distinguish real drift (offsets cluster tightly) from path-asymmetry
@@ -1486,40 +1456,25 @@ func teeStdoutToFile() func() {
 func main() {
 	defer teeStdoutToFile()()
 
-	logSkew := func(label string) *clockSkewSample {
-		sample, err := measureClockSkew()
-		if err != nil {
-			fmt.Printf("[debug] clock skew (%s) check failed: %v\n", label, err)
-			return nil
-		}
+	if sample, err := measureClockSkew(); err != nil {
+		fmt.Printf("[debug] clock skew check failed: %v\n", err)
+	} else {
 		direction := "ahead of"
 		mag := sample.Offset
 		if sample.Offset < 0 {
 			direction = "behind"
 			mag = -sample.Offset
 		}
-		fmt.Printf("[debug] clock skew (%s): laptop is %s %s network (rtt %s)\n",
-			label, mag.Truncate(time.Millisecond), direction,
+		fmt.Printf("[debug] clock skew: laptop is %s %s network (rtt %s)\n",
+			mag.Truncate(time.Millisecond), direction,
 			sample.RTT.Truncate(time.Millisecond))
-		return &sample
-	}
-
-	logSkew("before sync")
-	syncSystemClock()
-	if after := logSkew("after sync"); after != nil {
-		mag := after.Offset
-		if mag < 0 {
-			mag = -mag
-		}
 		// 50ms is roughly the per-Send variance — drift above this
 		// starts shifting the trigger fire away from when Exchange
 		// thinks the slot opens, so it's worth surfacing.
 		if mag > 50*time.Millisecond {
 			// Negate the offset: positive Offset = laptop ahead → step
 			// backward; negative = laptop behind → step forward.
-			adjustMs := -after.Offset.Milliseconds()
-			fmt.Printf("[debug] residual drift still %s — auto-sync did not fully correct\n",
-				mag.Truncate(time.Millisecond))
+			adjustMs := -sample.Offset.Milliseconds()
 			fmt.Println("[debug] paste in an elevated PowerShell to step the clock:")
 			fmt.Printf("[debug]   Set-Date -Adjust ([TimeSpan]::FromMilliseconds(%d))\n", adjustMs)
 		}
