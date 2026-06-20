@@ -2,6 +2,7 @@ package main
 
 // Set-Date -Adjust ([TimeSpan]::FromMilliseconds(-298))
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -1454,29 +1455,37 @@ func teeStdoutToFile() func() {
 }
 
 func main() {
+	clearDay := flag.String("clear-day", "",
+		"YYYY-MM-DD: delete our declined/pending bookings on that day and exit (no scheduler, no skew check)")
+	flag.Parse()
+
 	defer teeStdoutToFile()()
 
-	if sample, err := measureClockSkew(); err != nil {
-		fmt.Printf("[debug] clock skew check failed: %v\n", err)
-	} else {
-		direction := "ahead of"
-		mag := sample.Offset
-		if sample.Offset < 0 {
-			direction = "behind"
-			mag = -sample.Offset
-		}
-		fmt.Printf("[debug] clock skew: laptop is %s %s network (rtt %s)\n",
-			mag.Truncate(time.Millisecond), direction,
-			sample.RTT.Truncate(time.Millisecond))
-		// 50ms is roughly the per-Send variance — drift above this
-		// starts shifting the trigger fire away from when Exchange
-		// thinks the slot opens, so it's worth surfacing.
-		if mag > 50*time.Millisecond {
-			// Negate the offset: positive Offset = laptop ahead → step
-			// backward; negative = laptop behind → step forward.
-			adjustMs := -sample.Offset.Milliseconds()
-			fmt.Println("[debug] paste in an elevated PowerShell to step the clock:")
-			fmt.Printf("[debug]   Set-Date -Adjust ([TimeSpan]::FromMilliseconds(%d))\n", adjustMs)
+	// Skew check is only useful for the trigger path — skip it in
+	// clear-day mode so the command stays snappy.
+	if *clearDay == "" {
+		if sample, err := measureClockSkew(); err != nil {
+			fmt.Printf("[debug] clock skew check failed: %v\n", err)
+		} else {
+			direction := "ahead of"
+			mag := sample.Offset
+			if sample.Offset < 0 {
+				direction = "behind"
+				mag = -sample.Offset
+			}
+			fmt.Printf("[debug] clock skew: laptop is %s %s network (rtt %s)\n",
+				mag.Truncate(time.Millisecond), direction,
+				sample.RTT.Truncate(time.Millisecond))
+			// 50ms is roughly the per-Send variance — drift above this
+			// starts shifting the trigger fire away from when Exchange
+			// thinks the slot opens, so it's worth surfacing.
+			if mag > 50*time.Millisecond {
+				// Negate the offset: positive Offset = laptop ahead → step
+				// backward; negative = laptop behind → step forward.
+				adjustMs := -sample.Offset.Milliseconds()
+				fmt.Println("[debug] paste in an elevated PowerShell to step the clock:")
+				fmt.Printf("[debug]   Set-Date -Adjust ([TimeSpan]::FromMilliseconds(%d))\n", adjustMs)
+			}
 		}
 	}
 
@@ -1495,6 +1504,20 @@ func main() {
 	if err != nil {
 		fmt.Printf("LoadLocation(%q) failed: %v — falling back to fixed UTC+7\n", localTZName, err)
 		loc = time.FixedZone("GMT+7", 7*60*60)
+	}
+
+	// One-shot mode: sweep a single specified day and exit. Reuses the
+	// same cleanup pipeline as the startup leftover sweep — pass-1
+	// calendar scan + pass-2 response folder/Inbox scan.
+	if *clearDay != "" {
+		day, perr := time.ParseInLocation("2006-01-02", *clearDay, loc)
+		if perr != nil {
+			fmt.Printf("invalid --clear-day %q: %v (expected YYYY-MM-DD)\n", *clearDay, perr)
+			return
+		}
+		end := day.AddDate(0, 0, 1)
+		cleanupOurMeetings(loc, day, end)
+		return
 	}
 
 	// Startup-time cleanup of leftovers from previous nights' runs.

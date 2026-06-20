@@ -63,6 +63,20 @@ That's it. The program:
 A `booking-YYYY-MM-DD.log` file is written for every run (date-stamped to
 the day the program started in Asia/Bangkok).
 
+### One-shot cleanup mode
+
+To wipe declined/pending bookings on a specific day without running the
+scheduler:
+
+```
+go run . --clear-day=2026-07-15
+```
+
+Skips the skew check, scans the calendar + response folders for that one
+day, deletes any of our meetings that are declined or pending, and exits.
+Accepted meetings are kept. Useful for cleaning up after a manual
+cancellation or before testing a new run on a specific date.
+
 ## Configuration
 
 All knobs live at the top of `main.go`:
