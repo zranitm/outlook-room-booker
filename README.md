@@ -19,8 +19,9 @@ Prerequisites:
 
 - Windows + desktop Outlook signed into the booking account
 - Go 1.25+
-- The `you@example.com` account (or any account with delegate access to the
-  resource mailboxes you want to book) must be the default Outlook profile
+- The account that owns the booking (set via `ownerTag` in `main.go`) — or
+  any account with delegate access to the resource mailboxes you want to
+  book — must be the default Outlook profile
 - Clock synced — the trigger fires at the local wall-clock second, so a
   300 ms-fast laptop fires before Exchange thinks the slot is open
 
@@ -56,6 +57,7 @@ All knobs live at the top of `main.go`:
 
 | Constant | Default | What it controls |
 |---|---|---|
+| `ownerTag` | `"YOURTAG"` | Short identifier embedded in the meeting subject. Change this when a different user runs the program — the cleanup matcher derives its prefixes from this too. |
 | `rooms` | 9 example rooms | Resource mailboxes to book. Each must resolve to a real Exchange recipient. |
 | `slots` | 09:00–12:00, 14:00–17:00 | Time slots booked on each target day. |
 | `bookingDaysAhead` | 14 | Rolling window — at midnight day N, the program books day N+14. |
@@ -66,8 +68,8 @@ All knobs live at the top of `main.go`:
 | `pollInterval` | 30 s | Time the program waits for the room's response after each `Send` before retrying. |
 | `pollEvery` | 1 s | Cadence of polling the room's reply during the `pollInterval` window. |
 | `sendStagger` | 15 ms | Delay between concurrent first-Sends across groups (avoids Outlook WordEditor contention). |
-| `meetingSubject` | `"Room booking for YOURTAG"` | Subject of every booked meeting. Also drives cleanup recognition. |
-| `cleanupSubjects` | prefix list | Subjects considered "ours" by cleanup. Supports historical variants. |
+| `meetingSubject` | `"Room booking for " + ownerTag` | Subject of every booked meeting. Derived from `ownerTag`. |
+| `cleanupSubjects` | derived | Subject prefixes considered "ours" by cleanup. Derived from `ownerTag`; supports historical variants. |
 | `responseFolderName` | `"Room booking"` | Inbox subfolder where the user's rule routes meeting responses. Searched for orphaned declines during pass-2 cleanup. |
 
 ## Architecture

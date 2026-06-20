@@ -35,9 +35,16 @@ var rooms = []Room{
 	{Email: "room-i@example.com", Name: "Room I - Floor 1 - 8 Seats"},
 }
 
+// Booking owner — short identifier embedded in every meeting subject so
+// the booker is recognizable in calendar listings. Change this when a
+// different user runs the program; the cleanup matcher derives its
+// subject prefixes from this value too, so a single edit re-tags the
+// whole pipeline.
+const ownerTag = "YOURTAG"
+
 // Meeting template applied to every booking attempt.
 const (
-	meetingSubject = "Room booking for YOURTAG"
+	meetingSubject = "Room booking for " + ownerTag
 	meetingBody    = "Reserved automatically."
 
 	// Number of days between trigger date and meeting date. Matches the
@@ -118,10 +125,10 @@ const sendStagger = 15 * time.Millisecond
 
 // Subjects considered "ours" by cleanup. We match by PREFIX, so
 // historical variants that appended room names (e.g. "Room booking
-// for YOURTAG - Room A - ...") are still recognized.
+// for <owner> - Room A - ...") are still recognized.
 var cleanupSubjects = []string{
-	"Room booking for YOURTAG",
-	"YOURTAG Room booking",
+	"Room booking for " + ownerTag,
+	ownerTag + " Room booking",
 }
 
 // Outlook Inbox subfolder where the user's rule routes meeting
@@ -1023,7 +1030,7 @@ func cleanupOurMeetings(loc *time.Location, start, end time.Time) {
 
 		// Restrict expects "M/d/yyyy h:mm AM/PM" in current-locale form.
 		// We can no longer match Subject exactly because each booking
-		// includes the room's display name suffix (e.g. "YOURTAG Room
+		// includes the room's display name suffix (e.g. "<owner> Room
 		// booking - Room A - ..."). Filter by date here and
 		// match the subject prefix manually below.
 		filter := fmt.Sprintf("[Start] >= '%s' AND [Start] <= '%s'",
