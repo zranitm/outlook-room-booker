@@ -18,7 +18,26 @@ wall-clock second the room becomes reservable.
   - `ownerTag` — your short identifier (appears in every subject)
   - `rooms` — resource mailboxes to claim
   - `localTZName` — your timezone if not `Asia/Bangkok`
-  - `responseFolderName` — Inbox subfolder for room responses
+  - `responseFolderName` — Inbox subfolder for room responses (see
+    "Optional: Room booking folder" below)
+
+### Optional: Room booking folder
+
+`responseFolderName = "Room booking"` is a hint for the second cleanup
+pass — it tells the program where you've routed room accept/decline
+emails. **Not strictly required**: if the folder doesn't exist, the
+pass falls back to scanning Inbox directly (logs `no non-empty "Room
+booking" folder found, will rely on Inbox scan`).
+
+Recommended setup (Outlook web or desktop):
+
+1. Inbox → right-click → **New folder** → name it `Room booking`.
+2. Add a rule: *from* contains `room-` (or whichever pattern your
+   rooms use), *move to* `Room booking`.
+
+Pass-2 cleanup runs faster against a small dedicated folder than a
+4000-item Inbox. Set `responseFolderName = ""` to skip the folder
+lookup entirely if you don't want to set it up.
 
 > **Sender identity vs `ownerTag`.** The program does not specify an email
 > address anywhere — it talks to whatever Outlook profile is currently
