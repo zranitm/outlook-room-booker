@@ -60,7 +60,20 @@ go run . --clear-day=2026-07-15
 Set-Date -Adjust ([TimeSpan]::FromMilliseconds(-840))
 ```
 
-A `booking-YYYY-MM-DD.log` is appended to the working dir on every run.
+### Debug logs
+
+Every run is tee'd to a date-stamped file in the working directory —
+`booking-YYYY-MM-DD.log` (date = local Asia/Bangkok at process start,
+append-mode so multiple same-day runs accumulate). Console output is
+unchanged; the file gets an exact copy.
+
+If something looks wrong the morning after a run — wrong number of
+wins, unexpected declines, cleanup deleting too much — open last
+night's log and grep for `[trigger]`, `[poll]`, `[cleanup]`, or
+`[recover]`. The log captures every Send attempt, every room response,
+every cleanup decision and the reason for it. Paste the relevant
+chunk into Claude and ask what went wrong; the log is structured
+enough that the failure mode is usually obvious from a few lines.
 
 ## What `go run .` does
 
