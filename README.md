@@ -84,6 +84,14 @@ All knobs live at the top of `main.go`:
 Outlook is already authenticated, so we drive it via OLE Automation
 (`github.com/go-ole/go-ole`) — no extra credentials, no admin signoff.
 
+Tradeoff: COM is a Windows-only OS feature (lives in
+`ole32.dll`/`oleaut32.dll`), and `go-ole` won't compile or run on
+macOS or Linux. There's no equivalent on those platforms — macOS
+Outlook exposes a different automation API (AppleScript/ScriptingBridge),
+and Linux has no Outlook client at all. The only path off Windows
+would be to swap COM for Graph API, which puts us back at the
+admin-consent wall.
+
 **Per-(room, slot) COM worker pool.** Outlook's COM server is STA;
 cross-apartment calls serialize through the marshaller. We spawn one
 goroutine per (room, slot), each pinned to its own OS thread
@@ -128,6 +136,10 @@ the exact `Set-Date` value and you apply it once.
 
 ## Limitations
 
+- **Windows only.** COM is a Windows OS feature; the program won't
+  compile or run on macOS or Linux (no containerization either —
+  Outlook isn't supported in Windows Server Core / Nano images, and
+  the profile setup is interactive).
 - Single-user, single-laptop. Outlook is desktop-bound.
 - Doesn't handle the Object Model Guard prompt ("A program is trying to
   send…"). Disable it in Trust Center the first time.
