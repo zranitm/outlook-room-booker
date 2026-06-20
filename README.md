@@ -20,6 +20,14 @@ wall-clock second the room becomes reservable.
   - `localTZName` — your timezone if not `Asia/Bangkok`
   - `responseFolderName` — Inbox subfolder for room responses
 
+> **Sender identity vs `ownerTag`.** The program does not specify an email
+> address anywhere — it talks to whatever Outlook profile is currently
+> running, and meetings are sent **as that account**. `ownerTag` is only
+> a label baked into the subject line so people can tell whose booking is
+> whose. Switching the booking account = sign in to Outlook with a
+> different profile (no code change needed). Optionally update `ownerTag`
+> to match.
+
 ## Commands
 
 ```sh
