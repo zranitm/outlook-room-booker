@@ -161,10 +161,34 @@ returns `RPC_S_SERVER_UNAVAILABLE` (0x800706BA). `prepareDraft` detects
 this, reattaches via `CreateObject("Outlook.Application")` on the same
 pinned thread, and retries.
 
-**Clock skew diagnostic.** 5 NTP samples vs `time.cloudflare.com`,
-median offset reported. No auto-sync (admin every run, plus W32Time
-slews offsets under 1 s instead of stepping) — the program tells you
-the exact `Set-Date` value and you apply it once.
+**Clock skew matters because the race is millisecond-tight.** The
+trigger fires when the **laptop's** wall-clock reads `00:00:00.000`
+Asia/Bangkok. Exchange evaluates "is this slot reservable yet?"
+against **its own** clock (NTP-disciplined, treated as ground truth).
+If the laptop is 300 ms fast, our Send hits Exchange at *its*
+`23:59:59.700` — before the rolling 14-day window opens — and the
+request gets bounced as "slot not yet available." Conversely, a slow
+laptop just hands the race to whoever's clock is more accurate. We
+need to be within a few tens of ms of true network time for the trigger
+to fire at the right Exchange moment.
+
+**Why manual `Set-Date`, not auto-sync.** Three reasons:
+1. `w32tm /resync` and the `SetSystemTime` API both require admin. The
+   program runs unelevated by design (no UAC prompt every night), so
+   it can't sync the OS clock itself.
+2. The standard workaround — a Scheduled Task running as SYSTEM that
+   the program triggers via `schtasks /run` — needs one-time admin
+   setup that often doesn't stick and adds a moving part that can
+   silently break.
+3. Even if `w32tm /resync` runs, Windows W32Time **slews** phase
+   offsets under 1 second (gradually adjusting clock rate over
+   minutes) instead of **stepping** them. So a 500 ms-fast clock
+   stays 500 ms-fast for the booking window.
+
+`Set-Date -Adjust` steps immediately and is a one-line PowerShell
+command. The program measures the residual offset post-NTP and prints
+the exact `Set-Date` value to apply — you copy, paste into an elevated
+PS, and the clock is correct.
 
 ## Limitations
 
